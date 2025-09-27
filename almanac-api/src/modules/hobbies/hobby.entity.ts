@@ -16,4 +16,8 @@ export class Hobby {
 
   @CreateDateColumn()
   created_at: Date;
+
+  
+  completedToday?: boolean;
+  streak?: number;
 }

@@ -3,10 +3,10 @@ interface Habit {
   id: number;
   name: string;
   description?: string;
-  category: 'saude' | 'exercicio' | 'estudo' | 'trabalho' | 'lazer' | 'outros';
-  createdAt?: string;
-  updatedAt?: string;
-  completedToday?: boolean;
+  category: string;
+  completedToday: boolean;
+  streak: number;
+  createdAt: string;
 }
 
 interface CreateHabitDto {
@@ -15,163 +15,187 @@ interface CreateHabitDto {
   category: string;
 }
 
-// API Configuration
-const API_BASE_URL = 'http://localhost:3000';
+interface UpdateHabitDto {
+  name?: string;
+  description?: string;
+  category?: string;
+}
 
-// State Management
+interface Offensive {
+  id: number;
+  name: string;
+  description: string;
+  duration: number;
+  startDate: string;
+  endDate: string;
+  status: 'active' | 'completed' | 'failed';
+  habits: number[];
+  progress: number;
+  completedDays: number;
+}
+
+interface CreateOffensiveDto {
+  name: string;
+  description: string;
+  duration: number;
+  habits: number[];
+}
+
+interface Statistics {
+  totalHabits: number;
+  currentStreak: number;
+  completedToday: number;
+  achievements: number;
+  weeklyProgress: number[];
+  categoryStats: { [key: string]: number };
+}
+
+// Main Application Class
 class AlmanacApp {
   private habits: Habit[] = [];
+  private offensives: Offensive[] = [];
+  private statistics: Statistics | null = null;
   private currentEditingHabit: Habit | null = null;
-  private isLoading = false;
+  private currentTab: string = 'dashboard';
+  private readonly API_BASE_URL = 'http://localhost:3000/api';
 
-  constructor() {
+  constructor( ) {
     this.init();
   }
 
-  private init(): void {
+  private async init(): Promise<void> {
     this.setupEventListeners();
-    this.loadHabits();
+    this.setupTabNavigation();
+    await this.loadInitialData();
   }
 
-  // Event Listeners
+  // Event Listeners Setup
   private setupEventListeners(): void {
-    // Tab switching
-    document.querySelectorAll<HTMLButtonElement>('.nav-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const el = e.currentTarget as HTMLButtonElement;
-        const tabName = el.dataset.tab;
-        if (tabName) this.switchTab(tabName);
-      });
-    });
+    // Modal events
+    const fab = document.getElementById('fab');
+    const modal = document.getElementById('modal');
+    const overlay = document.getElementById('overlay');
+    const closeModal = document.getElementById('close-modal');
+    const cancelBtn = document.getElementById('cancel-btn');
+    const saveBtn = document.getElementById('save-btn');
+    const createFirstHabit = document.getElementById('create-first-habit');
 
-    // Modal controls
-    document.getElementById('fab')?.addEventListener('click', () => this.openModal());
-    document.getElementById('create-first-habit')?.addEventListener('click', () => this.openModal());
-    document.getElementById('close-modal')?.addEventListener('click', () => this.closeModal());
-    document.getElementById('cancel-btn')?.addEventListener('click', () => this.closeModal());
-    document.getElementById('save-btn')?.addEventListener('click', () => this.saveHabit());
-    document.getElementById('overlay')?.addEventListener('click', () => this.closeModal());
+    if (fab) fab.addEventListener('click', () => this.openModal());
+    if (createFirstHabit) createFirstHabit.addEventListener('click', () => this.openModal());
+    if (closeModal) closeModal.addEventListener('click', () => this.closeModal());
+    if (cancelBtn) cancelBtn.addEventListener('click', () => this.closeModal());
+    if (overlay) overlay.addEventListener('click', () => this.closeModal());
+    if (saveBtn) saveBtn.addEventListener('click', () => this.saveHabit());
 
     // Form validation
-    const nameInput = document.getElementById('habit-name') as HTMLInputElement | null;
-    nameInput?.addEventListener('input', () => this.validateForm());
+    const nameInput = document.getElementById('habit-name') as HTMLInputElement;
+    if (nameInput) {
+      nameInput.addEventListener('input', () => this.validateForm());
+    }
 
-    // Keyboard shortcuts
-    document.addEventListener('keydown', (e) => {
-      const modal = document.getElementById('modal');
-      if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) {
-        this.closeModal();
-      }
-      if (e.key === 'Enter' && modal && !modal.classList.contains('hidden') && e.target === nameInput) {
-        e.preventDefault();
-        this.saveHabit();
-      }
+    // Offensive form events
+    const createOffensiveBtn = document.getElementById('create-offensive-btn');
+    if (createOffensiveBtn) {
+      createOffensiveBtn.addEventListener('click', () => this.createOffensive());
+    }
+  }
+
+  // Tab Navigation Setup
+  private setupTabNavigation(): void {
+    const navButtons = document.querySelectorAll('.nav-btn');
+    
+    navButtons.forEach(button => {
+      button.addEventListener('click', (e) => {
+        const target = e.target as HTMLButtonElement;
+        const tabName = target.getAttribute('data-tab');
+        if (tabName) {
+          this.switchTab(tabName);
+        }
+      });
     });
   }
 
   private switchTab(tabName: string): void {
-    // Update nav buttons
-    document.querySelectorAll<HTMLButtonElement>('.nav-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.tab === tabName);
-    });
-    
-    // Update tab content
-    document.querySelectorAll<HTMLElement>('.tab-content').forEach(content => {
-      content.classList.toggle('active', content.id === tabName);
-    });
+    // Update active nav button
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`[data-tab="${tabName}"]`)?.classList.add('active');
 
-    // Show/hide FAB
-    const fab = document.getElementById('fab') as HTMLElement | null;
-    if (fab) fab.style.display = tabName === 'dashboard' ? 'block' : 'none';
+    // Update active tab content
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    document.getElementById(tabName)?.classList.add('active');
 
-    // Update statistics when switching to stats tab
-    if (tabName === 'statistics') this.updateStatistics();
+    this.currentTab = tabName;
+
+    // Load tab-specific data
+    switch (tabName) {
+      case 'statistics':
+        this.loadStatistics();
+        break;
+      case 'offensives':
+        this.loadOffensives();
+        break;
+      case 'dashboard':
+        this.loadHabits();
+        break;
+    }
   }
 
-  // API calls
-  private async apiRequest(endpoint: string, options?: RequestInit): Promise<any> {
-    const res = await fetch(`${API_BASE_URL}${endpoint}`, {
-      headers: { 'Content-Type': 'application/json' },
-      ...options,
-    });
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    return res.status === 204 ? null : res.json();
+  // Data Loading Methods
+  private async loadInitialData(): Promise<void> {
+    this.showLoading();
+    try {
+      await this.loadHabits();
+      this.updateStats();
+    } catch (error) {
+      console.error('Erro ao carregar dados iniciais:', error);
+      this.showNotification('Erro ao carregar dados', 'error');
+    } finally {
+      this.hideLoading();
+    }
   }
 
   private async loadHabits(): Promise<void> {
-    this.setLoading(true);
     try {
-      const habits = await this.apiRequest('/hobbies');
-      this.habits = (habits || []).map((habit: any) => ({
-        ...habit,
-        completedToday: false // Initialize completion status
-      }));
+      const response = await fetch(`${this.API_BASE_URL}/habits`);
+      if (!response.ok) throw new Error('Falha ao carregar hábitos');
+      
+      this.habits = await response.json();
       this.renderHabits();
       this.updateStats();
     } catch (error) {
       console.error('Erro ao carregar hábitos:', error);
       this.showNotification('Erro ao carregar hábitos', 'error');
-      // Show empty state even on error
-      this.habits = [];
-      this.renderHabits();
-    } finally {
-      this.setLoading(false);
     }
   }
 
-  private async createHabit(data: CreateHabitDto): Promise<void> {
+  private async loadStatistics(): Promise<void> {
     try {
-      await this.apiRequest('/hobbies', { method: 'POST', body: JSON.stringify(data) });
-      await this.loadHabits();
-      this.showNotification('Hábito criado com sucesso!', 'success');
+      const response = await fetch(`${this.API_BASE_URL}/statistics`);
+      if (!response.ok) throw new Error('Falha ao carregar estatísticas');
+      
+      this.statistics = await response.json();
+      this.renderStatistics();
     } catch (error) {
-      console.error('Erro ao criar hábito:', error);
-      this.showNotification('Erro ao criar hábito', 'error');
+      console.error('Erro ao carregar estatísticas:', error);
+      this.showNotification('Erro ao carregar estatísticas', 'error');
     }
   }
 
-  private async updateHabit(id: number, data: CreateHabitDto): Promise<void> {
+  private async loadOffensives(): Promise<void> {
     try {
-      await this.apiRequest(`/hobbies/${id}`, { method: 'PUT', body: JSON.stringify(data) });
-      await this.loadHabits();
-      this.showNotification('Hábito atualizado!', 'success');
+      const response = await fetch(`${this.API_BASE_URL}/offensives`);
+      if (!response.ok) throw new Error('Falha ao carregar ofensivas');
+      
+      this.offensives = await response.json();
+      this.renderOffensives();
+      this.renderOffensiveForm();
     } catch (error) {
-      console.error('Erro ao atualizar hábito:', error);
-      this.showNotification('Erro ao atualizar hábito', 'error');
+      console.error('Erro ao carregar ofensivas:', error);
+      this.showNotification('Erro ao carregar ofensivas', 'error');
     }
   }
 
-  private async deleteHabit(id: number): Promise<void> {
-    const habit = this.habits.find(h => h.id === id);
-    if (!habit) return;
-    
-    if (!confirm(`Tem certeza que deseja deletar "${habit.name}"?`)) return;
-    
-    try {
-      await this.apiRequest(`/hobbies/${id}`, { method: 'DELETE' });
-      await this.loadHabits();
-      this.showNotification('Hábito deletado', 'info');
-    } catch (error) {
-      console.error('Erro ao deletar hábito:', error);
-      this.showNotification('Erro ao deletar hábito', 'error');
-    }
-  }
-
-  // UI Methods
-  private setLoading(loading: boolean): void {
-    this.isLoading = loading;
-    const loadingEl = document.getElementById('loading');
-    const habitsList = document.getElementById('habits-list');
-    const emptyState = document.getElementById('empty-state');
-    
-    if (loadingEl) loadingEl.classList.toggle('hidden', !loading);
-    
-    if (loading) {
-      habitsList?.classList.add('hidden');
-      emptyState?.classList.add('hidden');
-    }
-  }
-
+  // Rendering Methods
   private renderHabits(): void {
     const habitsList = document.getElementById('habits-list');
     const emptyState = document.getElementById('empty-state');
@@ -200,13 +224,13 @@ class AlmanacApp {
             </div>
           </div>
           <div class="habit-actions">
-            <button class="action-btn check" onclick="app.toggleHabit(${habit.id})" title="${habit.completedToday ? 'Desmarcar' : 'Marcar como concluído'}">
+            <button class="action-btn check" onclick="app.toggleHabit(${habit.id})" title="Marcar como concluído">
               ${habit.completedToday ? '✓' : '○'}
             </button>
-            <button class="action-btn edit" onclick="app.editHabit(${habit.id})" title="Editar">
+            <button class="action-btn edit" onclick="app.editHabit(${habit.id})" title="Editar hábito">
               ✏️
             </button>
-            <button class="action-btn delete" onclick="app.deleteHabitById(${habit.id})" title="Deletar">
+            <button class="action-btn delete" onclick="app.deleteHabitById(${habit.id})" title="Excluir hábito">
               🗑️
             </button>
           </div>
@@ -215,79 +239,392 @@ class AlmanacApp {
     `).join('');
   }
 
-  private updateStats(): void {
-    const totalHabits = this.habits.length;
-    const completedToday = this.habits.filter(h => h.completedToday).length;
-    const currentStreak = 0; // TODO: Implement streak logic
-    
-    // Update dashboard stats
-    const totalEl = document.getElementById('total-habits');
-    const completedEl = document.getElementById('completed-today');
-    const streakEl = document.getElementById('current-streak');
-    
-    if (totalEl) totalEl.textContent = totalHabits.toString();
-    if (completedEl) completedEl.textContent = completedToday.toString();
-    if (streakEl) streakEl.textContent = currentStreak.toString();
+  private renderStatistics(): void {
+    if (!this.statistics) return;
+
+    // Update basic stats
+    const statsTotal = document.getElementById('stats-total');
+    const statsStreak = document.getElementById('stats-streak');
+    const statsAchievements = document.getElementById('stats-achievements');
+
+    if (statsTotal) statsTotal.textContent = this.statistics.totalHabits.toString();
+    if (statsStreak) statsStreak.textContent = this.statistics.currentStreak.toString();
+    if (statsAchievements) statsAchievements.textContent = this.statistics.achievements.toString();
+
+    // Render weekly progress chart
+    this.renderWeeklyChart();
+
+    // Render category stats
+    this.renderCategoryStats();
   }
 
-  private updateStatistics(): void {
-    const totalHabits = this.habits.length;
-    const currentStreak = 0; // TODO: Implement streak logic
-    const achievements = Math.floor(this.habits.filter(h => h.completedToday).length / 2);
+  private renderWeeklyChart(): void {
+    const canvas = document.getElementById('weekly-progress-chart') as HTMLCanvasElement;
+    if (!canvas || !this.statistics) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const data = this.statistics.weeklyProgress;
+    const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
     
-    // Update statistics tab
-    const statsTotalEl = document.getElementById('stats-total');
-    const statsStreakEl = document.getElementById('stats-streak');
-    const statsAchievementsEl = document.getElementById('stats-achievements');
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    if (statsTotalEl) statsTotalEl.textContent = totalHabits.toString();
-    if (statsStreakEl) statsStreakEl.textContent = currentStreak.toString();
-    if (statsAchievementsEl) statsAchievementsEl.textContent = achievements.toString();
+    // Set up chart dimensions
+    const padding = 40;
+    const chartWidth = canvas.width - 2 * padding;
+    const chartHeight = canvas.height - 2 * padding;
+    const barWidth = chartWidth / data.length;
+    const maxValue = Math.max(...data, 1);
+
+    // Draw bars
+    data.forEach((value, index) => {
+      const barHeight = (value / maxValue) * chartHeight;
+      const x = padding + index * barWidth + barWidth * 0.2;
+      const y = canvas.height - padding - barHeight;
+      const width = barWidth * 0.6;
+
+      // Draw bar
+      ctx.fillStyle = '#667eea';
+      ctx.fillRect(x, y, width, barHeight);
+
+      // Draw day label
+      ctx.fillStyle = '#6b7280';
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(days[index], x + width / 2, canvas.height - 10);
+
+      // Draw value label
+      ctx.fillStyle = '#1f2937';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillText(value.toString(), x + width / 2, y - 5);
+    });
+  }
+
+  private renderCategoryStats(): void {
+    const categoryGrid = document.getElementById('category-stats-grid');
+    if (!categoryGrid || !this.statistics) return;
+
+    const categories = {
+      saude: { icon: '🏥', name: 'Saúde' },
+      exercicio: { icon: '💪', name: 'Exercício' },
+      estudo: { icon: '📚', name: 'Estudo' },
+      trabalho: { icon: '💼', name: 'Trabalho' },
+      lazer: { icon: '🎮', name: 'Lazer' },
+      outros: { icon: '⭐', name: 'Outros' }
+    };
+
+    categoryGrid.innerHTML = Object.entries(categories).map(([key, category]) => {
+      const count = this.statistics?.categoryStats[key] || 0;
+      return `
+        <div class="category-item">
+          <span class="category-icon">${category.icon}</span>
+          <div class="category-name">${category.name}</div>
+          <div class="category-count">${count}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  private renderOffensives(): void {
+    const activeOffensives = document.getElementById('active-offensives');
+    const offensivesHistory = document.getElementById('offensives-history');
+
+    if (!activeOffensives || !offensivesHistory) return;
+
+    // Render active offensives
+    const active = this.offensives.filter(o => o.status === 'active');
+    if (active.length === 0) {
+      activeOffensives.innerHTML = '<p style="text-align: center; color: #6b7280; padding: 2rem;">Nenhuma ofensiva ativa no momento.</p>';
+    } else {
+      activeOffensives.innerHTML = active.map(offensive => this.renderOffensiveCard(offensive)).join('');
+    }
+
+    // Render history
+    const history = this.offensives.filter(o => o.status !== 'active');
+    if (history.length === 0) {
+      offensivesHistory.innerHTML = '<p style="text-align: center; color: #6b7280; padding: 2rem;">Nenhuma ofensiva no histórico.</p>';
+    } else {
+      offensivesHistory.innerHTML = history.map(offensive => this.renderHistoryCard(offensive)).join('');
+    }
+  }
+
+  private renderOffensiveCard(offensive: Offensive): string {
+    const habitNames = offensive.habits.map(habitId => {
+      const habit = this.habits.find(h => h.id === habitId);
+      return habit ? habit.name : 'Hábito não encontrado';
+    });
+
+    return `
+      <div class="offensive-card">
+        <div class="offensive-header">
+          <div>
+            <h3 class="offensive-title">${this.escapeHtml(offensive.name)}</h3>
+            <p style="color: #6b7280; font-size: 0.9rem;">${this.escapeHtml(offensive.description)}</p>
+          </div>
+          <span class="offensive-status ${offensive.status}">${offensive.status}</span>
+        </div>
+        
+        <div class="offensive-progress">
+          <div class="progress-bar">
+            <div class="progress-fill" style="width: ${offensive.progress}%"></div>
+          </div>
+          <p class="progress-text">${offensive.completedDays} de ${offensive.duration} dias (${offensive.progress.toFixed(1)}%)</p>
+        </div>
+
+        <div class="offensive-habits">
+          <h4 style="font-size: 0.9rem; color: #374151; margin-bottom: 0.5rem;">Hábitos:</h4>
+          <div class="habits-list-small">
+            ${habitNames.map(name => `<span class="habit-tag">${this.escapeHtml(name)}</span>`).join('')}
+          </div>
+        </div>
+
+        <div class="offensive-actions">
+          <button class="btn-secondary btn-small" onclick="app.pauseOffensive(${offensive.id})">Pausar</button>
+          <button class="btn-primary btn-small" onclick="app.completeOffensive(${offensive.id})">Concluir</button>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderHistoryCard(offensive: Offensive): string {
+    const endDate = new Date(offensive.endDate).toLocaleDateString('pt-BR');
+    const resultClass = offensive.status === 'completed' ? 'success' : 'failure';
+    const resultText = offensive.status === 'completed' ? 'Concluída com Sucesso!' : 'Não Concluída';
+
+    return `
+      <div class="history-card">
+        <div class="history-header">
+          <h4 class="history-title">${this.escapeHtml(offensive.name)}</h4>
+          <span class="history-date">${endDate}</span>
+        </div>
+        <div class="history-result ${resultClass}">
+          ${resultText}
+        </div>
+        <p style="color: #6b7280; font-size: 0.9rem; margin-top: 1rem;">
+          ${offensive.completedDays} de ${offensive.duration} dias completados
+        </p>
+      </div>
+    `;
+  }
+
+  private renderOffensiveForm(): void {
+    const habitsSelector = document.getElementById('offensive-habits-selector');
+    if (!habitsSelector) return;
+
+    habitsSelector.innerHTML = this.habits.map(habit => `
+      <label class="habit-checkbox">
+        <input type="checkbox" value="${habit.id}" name="offensive-habits">
+        <span>${this.getCategoryIcon(habit.category)} ${this.escapeHtml(habit.name)}</span>
+      </label>
+    `).join('');
+
+    // Add event listeners for checkbox selection
+    habitsSelector.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+      checkbox.addEventListener('change', (e) => {
+        const target = e.target as HTMLInputElement;
+        const label = target.closest('.habit-checkbox');
+        if (label) {
+          if (target.checked) {
+            label.classList.add('selected');
+          } else {
+            label.classList.remove('selected');
+          }
+        }
+      });
+    });
+  }
+
+  // API Methods
+  private async createHabit(habitData: CreateHabitDto): Promise<void> {
+    try {
+      const response = await fetch(`${this.API_BASE_URL}/habits`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(habitData)
+      });
+
+      if (!response.ok) throw new Error('Falha ao criar hábito');
+
+      const newHabit = await response.json();
+      this.habits.push(newHabit);
+      this.renderHabits();
+      this.updateStats();
+      this.showNotification('Hábito criado com sucesso! 🎉', 'success');
+    } catch (error) {
+      console.error('Erro ao criar hábito:', error);
+      this.showNotification('Erro ao criar hábito', 'error');
+    }
+  }
+
+  private async updateHabit(id: number, habitData: UpdateHabitDto): Promise<void> {
+    try {
+      const response = await fetch(`${this.API_BASE_URL}/habits/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(habitData)
+      });
+
+      if (!response.ok) throw new Error('Falha ao atualizar hábito');
+
+      const updatedHabit = await response.json();
+      const index = this.habits.findIndex(h => h.id === id);
+      if (index !== -1) {
+        this.habits[index] = updatedHabit;
+        this.renderHabits();
+        this.updateStats();
+        this.showNotification('Hábito atualizado com sucesso! ✨', 'success');
+      }
+    } catch (error) {
+      console.error('Erro ao atualizar hábito:', error);
+      this.showNotification('Erro ao atualizar hábito', 'error');
+    }
+  }
+
+  private async deleteHabit(id: number): Promise<void> {
+    if (!confirm('Tem certeza que deseja excluir este hábito?')) return;
+
+    try {
+      const response = await fetch(`${this.API_BASE_URL}/habits/${id}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) throw new Error('Falha ao excluir hábito');
+
+      this.habits = this.habits.filter(h => h.id !== id);
+      this.renderHabits();
+      this.updateStats();
+      this.showNotification('Hábito excluído com sucesso', 'info');
+    } catch (error) {
+      console.error('Erro ao excluir hábito:', error);
+      this.showNotification('Erro ao excluir hábito', 'error');
+    }
+  }
+
+  private async createOffensive(): Promise<void> {
+    const nameInput = document.getElementById('offensive-name') as HTMLInputElement;
+    const durationInput = document.getElementById('offensive-duration') as HTMLInputElement;
+    const descriptionInput = document.getElementById('offensive-description') as HTMLTextAreaElement;
+    const selectedHabits = Array.from(document.querySelectorAll('input[name="offensive-habits"]:checked'))
+      .map(input => parseInt((input as HTMLInputElement).value));
+
+    if (!nameInput || !durationInput || !descriptionInput) return;
+
+    const name = nameInput.value.trim();
+    const duration = parseInt(durationInput.value);
+    const description = descriptionInput.value.trim();
+
+    if (!name || !duration || selectedHabits.length === 0) {
+      this.showNotification('Preencha todos os campos e selecione pelo menos um hábito', 'error');
+      return;
+    }
+
+    const offensiveData: CreateOffensiveDto = {
+      name,
+      description,
+      duration,
+      habits: selectedHabits
+    };
+
+    try {
+      const response = await fetch(`${this.API_BASE_URL}/offensives`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(offensiveData)
+      });
+
+      if (!response.ok) throw new Error('Falha ao criar ofensiva');
+
+      const newOffensive = await response.json();
+      this.offensives.push(newOffensive);
+      this.renderOffensives();
+      
+      // Clear form
+      nameInput.value = '';
+      durationInput.value = '';
+      descriptionInput.value = '';
+      document.querySelectorAll('input[name="offensive-habits"]:checked').forEach(input => {
+        (input as HTMLInputElement).checked = false;
+        input.closest('.habit-checkbox')?.classList.remove('selected');
+      });
+
+      this.showNotification('Ofensiva criada com sucesso! ⚔️', 'success');
+    } catch (error) {
+      console.error('Erro ao criar ofensiva:', error);
+      this.showNotification('Erro ao criar ofensiva', 'error');
+    }
+  }
+
+  // UI Helper Methods
+  private showLoading(): void {
+    const loading = document.getElementById('loading');
+    if (loading) loading.classList.remove('hidden');
+  }
+
+  private hideLoading(): void {
+    const loading = document.getElementById('loading');
+    if (loading) loading.classList.add('hidden');
+  }
+
+  private updateStats(): void {
+    const currentStreak = document.getElementById('current-streak');
+    const completedToday = document.getElementById('completed-today');
+    const totalHabits = document.getElementById('total-habits');
+
+    const completed = this.habits.filter(h => h.completedToday).length;
+    const maxStreak = Math.max(...this.habits.map(h => h.streak), 0);
+
+    if (currentStreak) currentStreak.textContent = maxStreak.toString();
+    if (completedToday) completedToday.textContent = completed.toString();
+    if (totalHabits) totalHabits.textContent = this.habits.length.toString();
   }
 
   // Modal Methods
   private openModal(habit?: Habit): void {
-    this.currentEditingHabit = habit || null;
     const modal = document.getElementById('modal');
     const overlay = document.getElementById('overlay');
     const modalTitle = document.getElementById('modal-title');
     const saveBtnText = document.getElementById('save-btn-text');
-    
-    if (!modal || !overlay || !modalTitle || !saveBtnText) return;
-    
+
+    if (!modal || !overlay) return;
+
+    this.currentEditingHabit = habit || null;
+
+    if (modalTitle) {
+      modalTitle.textContent = habit ? 'Editar Hábito' : 'Novo Hábito';
+    }
+    if (saveBtnText) {
+      saveBtnText.textContent = habit ? 'Salvar' : 'Criar';
+    }
+
     if (habit) {
-      modalTitle.textContent = 'Editar Hábito';
-      saveBtnText.textContent = 'Salvar';
-      this.fillForm(habit);
+      this.populateForm(habit);
     } else {
-      modalTitle.textContent = 'Novo Hábito';
-      saveBtnText.textContent = 'Criar';
       this.clearForm();
     }
-    
+
     modal.classList.remove('hidden');
     overlay.classList.remove('hidden');
-    
-    const nameInput = document.getElementById('habit-name') as HTMLInputElement;
-    nameInput?.focus();
     this.validateForm();
   }
 
   private closeModal(): void {
     const modal = document.getElementById('modal');
     const overlay = document.getElementById('overlay');
-    
-    modal?.classList.add('hidden');
-    overlay?.classList.add('hidden');
+
+    if (modal) modal.classList.add('hidden');
+    if (overlay) overlay.classList.add('hidden');
+
     this.currentEditingHabit = null;
     this.clearForm();
   }
 
-  private fillForm(habit: Habit): void {
+  private populateForm(habit: Habit): void {
     const nameInput = document.getElementById('habit-name') as HTMLInputElement;
     const descInput = document.getElementById('habit-description') as HTMLTextAreaElement;
     const categorySelect = document.getElementById('habit-category') as HTMLSelectElement;
-    
+
     if (nameInput) nameInput.value = habit.name;
     if (descInput) descInput.value = habit.description || '';
     if (categorySelect) categorySelect.value = habit.category;
@@ -376,6 +713,16 @@ class AlmanacApp {
 
   public async deleteHabitById(id: number): Promise<void> {
     await this.deleteHabit(id);
+  }
+
+  public async pauseOffensive(id: number): Promise<void> {
+    // Implementation for pausing offensive
+    this.showNotification('Funcionalidade em desenvolvimento', 'info');
+  }
+
+  public async completeOffensive(id: number): Promise<void> {
+    // Implementation for completing offensive
+    this.showNotification('Funcionalidade em desenvolvimento', 'info');
   }
 
   // Utility Methods

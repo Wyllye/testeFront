@@ -15,6 +15,7 @@
                 <nav class="nav">
                     <button class="nav-btn active" data-tab="dashboard">Dashboard</button>
                     <button class="nav-btn" data-tab="statistics">Estatísticas</button>
+                    <button class="nav-btn" data-tab="offensives">Ofensivas</button>
                 </nav>
             </div>
         </header>
@@ -93,6 +94,78 @@
                                     <span class="stat-card-icon">🏆</span>
                                 </div>
                                 <p class="stat-card-value" id="stats-achievements">0</p>
+                            </div>
+                        </div>
+
+                        <!-- Gráfico de Progresso Semanal -->
+                        <div class="chart-section">
+                            <h3 class="chart-title">Progresso Semanal</h3>
+                            <div class="weekly-chart">
+                                <div class="chart-container">
+                                    <canvas id="weekly-progress-chart" width="400" height="200"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Estatísticas por Categoria -->
+                        <div class="category-stats">
+                            <h3 class="section-title">Hábitos por Categoria</h3>
+                            <div class="category-grid" id="category-stats-grid">
+                                <!-- Será preenchido dinamicamente -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Offensives Tab -->
+                <div id="offensives" class="tab-content">
+                    <div class="content-area">
+                        <h2 style="margin-bottom: 2rem; color: #1f2937; font-size: 1.75rem;">Ofensivas</h2>
+                        
+                        <!-- Ofensivas Ativas -->
+                        <div class="offensives-section">
+                            <h3 class="section-title">Ofensivas Ativas</h3>
+                            <div class="offensives-grid" id="active-offensives">
+                                <!-- Será preenchido dinamicamente -->
+                            </div>
+                        </div>
+
+                        <!-- Criar Nova Ofensiva -->
+                        <div class="create-offensive-section">
+                            <h3 class="section-title">Criar Nova Ofensiva</h3>
+                            <div class="offensive-form">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="offensive-name">Nome da Ofensiva</label>
+                                        <input type="text" id="offensive-name" placeholder="Ex: Desafio 30 dias de exercício">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="offensive-duration">Duração (dias)</label>
+                                        <input type="number" id="offensive-duration" placeholder="30" min="1" max="365">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="offensive-description">Descrição</label>
+                                    <textarea id="offensive-description" placeholder="Descreva o objetivo da sua ofensiva..." rows="3"></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label for="offensive-habits">Selecionar Hábitos</label>
+                                    <div class="habits-selector" id="offensive-habits-selector">
+                                        <!-- Será preenchido dinamicamente com os hábitos disponíveis -->
+                                    </div>
+                                </div>
+                                <button class="btn-primary" id="create-offensive-btn">
+                                    <span class="btn-icon">⚔️</span>
+                                    Criar Ofensiva
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Histórico de Ofensivas -->
+                        <div class="offensives-history">
+                            <h3 class="section-title">Histórico de Ofensivas</h3>
+                            <div class="history-grid" id="offensives-history">
+                                <!-- Será preenchido dinamicamente -->
                             </div>
                         </div>
                     </div>

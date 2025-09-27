@@ -1,18 +1,24 @@
-import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { ValidationPipe } from '@nestjs/common';
+import { OffensivesService } from './modules/offensives/offensives.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // validação global (deixa como já está aí no teu projeto)
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
+  app.enableCors(); // Habilitar CORS para permitir comunicação com o front-end
+  app.useGlobalPipes(new ValidationPipe()); // Habilitar validação de DTOs
 
-  // 🔓 libera o front do Vite (5173) para chamar tua API
-  app.enableCors({
-    origin: 'http://localhost:5173',
-  });
+  await app.listen(3000);
 
-  await app.listen(process.env.PORT || 3000);
+  // Agendar verificação de ofensivas expiradas a cada hora
+  const offensivesService = app.get(OffensivesService);
+  setInterval(() => {
+    offensivesService.checkAndUpdateExpiredOffensives()
+      .then(() => console.log('Verificação de ofensivas expiradas executada.'))
+      .catch(error => console.error('Erro ao verificar ofensivas expiradas:', error));
+  }, 3600000); // A cada 1 hora (3600000 ms)
+
+  console.log(`Application is running on: ${await app.getUrl()}`);
 }
 bootstrap();
