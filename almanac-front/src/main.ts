@@ -57,7 +57,8 @@ class AlmanacApp {
   private statistics: Statistics | null = null;
   private currentEditingHabit: Habit | null = null;
   private currentTab: string = 'dashboard';
-  private readonly API_BASE_URL = 'http://localhost:3000/api';
+  private readonly API_BASE_URL = 'http://localhost:3000';
+ 
 
   constructor( ) {
     this.init();
@@ -156,7 +157,7 @@ class AlmanacApp {
 
   private async loadHabits(): Promise<void> {
     try {
-      const response = await fetch(`${this.API_BASE_URL}/habits`);
+      const response = await fetch(`${this.API_BASE_URL}/hobbies`);
       if (!response.ok) throw new Error('Falha ao carregar hábitos');
       
       this.habits = await response.json();
@@ -196,7 +197,7 @@ class AlmanacApp {
   }
 
   // Rendering Methods
-  private renderHabits(): void {
+  public renderHabits(): void {
     const habitsList = document.getElementById('habits-list');
     const emptyState = document.getElementById('empty-state');
     
@@ -439,7 +440,7 @@ class AlmanacApp {
   // API Methods
   private async createHabit(habitData: CreateHabitDto): Promise<void> {
     try {
-      const response = await fetch(`${this.API_BASE_URL}/habits`, {
+      const response = await fetch(`${this.API_BASE_URL}/hobbies`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(habitData)
@@ -460,7 +461,7 @@ class AlmanacApp {
 
   private async updateHabit(id: number, habitData: UpdateHabitDto): Promise<void> {
     try {
-      const response = await fetch(`${this.API_BASE_URL}/habits/${id}`, {
+      const response = await fetch(`${this.API_BASE_URL}/hobbies/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(habitData)
