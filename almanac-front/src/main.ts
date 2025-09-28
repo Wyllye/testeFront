@@ -487,7 +487,7 @@ class AlmanacApp {
     if (!confirm('Tem certeza que deseja excluir este hábito?')) return;
 
     try {
-      const response = await fetch(`${this.API_BASE_URL}/habits/${id}`, {
+      const response = await fetch(`${this.API_BASE_URL}/hobbies/${id}`, {
         method: 'DELETE'
       });
 
